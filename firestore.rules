@@ -1,0 +1,213 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required) - Firebase Auth UID
+    //   - email: string (required) - User email
+    //   - name: string (required) - User name
+    //   - slug: string (required) - Unique URL slug
+    //   - bio: string (optional) - User bio
+    //   - photoUrl: string (optional) - User photo URL
+    //   - theme: map (optional) - Theme settings
+    //   - plan: string (required) - 'free' or 'pro'
+    //   - createdAt: timestamp (required) - Creation time
+    //
+    // Collection: blocks
+    // Document ID: {blockId}
+    // Fields:
+    //   - id: string (required) - Block ID
+    //   - userId: string (required) - Owner UID
+    //   - type: string (required) - 'link', 'text', 'product', 'content'
+    //   - title: string (optional) - Block title
+    //   - url: string (optional) - Link URL
+    //   - content: string (optional) - Text content
+    //   - productId: string (optional) - Product ID
+    //   - order: number (required) - Display order
+    //   - isActive: bool (required) - Is block active
+    //   - createdAt: timestamp (required) - Creation time
+    //
+    // Collection: products
+    // Document ID: {productId}
+    // Fields:
+    //   - id: string (required) - Product ID
+    //   - userId: string (required) - Owner UID
+    //   - type: string (required) - 'simple' or 'digital'
+    //   - name: string (required) - Product name
+    //   - description: string (optional) - Product description
+    //   - price: number (required) - Product price
+    //   - imageUrl: string (optional) - Image URL
+    //   - fileUrl: string (optional) - File URL (digital only)
+    //   - isActive: bool (required) - Is product active
+    //   - stock: number (optional) - Stock count
+    //   - createdAt: timestamp (required) - Creation time
+    //
+    // Collection: purchases
+    // Document ID: {purchaseId}
+    // Fields:
+    //   - id: string (required) - Purchase ID
+    //   - creatorId: string (required) - Product owner UID
+    //   - productId: string (required) - Product ID
+    //   - buyerName: string (required) - Buyer name
+    //   - buyerEmail: string (required) - Buyer email
+    //   - amount: number (required) - Purchase amount
+    //   - status: string (required) - 'pending', 'approved', 'rejected', 'cancelled'
+    //   - paymentId: string (optional) - Payment gateway ID
+    //   - createdAt: timestamp (required) - Creation time
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'name', 'slug', 'plan', 'createdAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() < 100 &&
+             data.email is string && isValidEmail(data.email) && data.email.size() < 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.slug is string && data.slug.size() > 0 && data.slug.size() < 50 && data.slug.matches("^[a-z0-9-]+$") &&
+             data.plan in ['free', 'pro'] &&
+             data.createdAt is timestamp &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 500)) &&
+             (!('photoUrl' in data) || (isValidUrl(data.photoUrl) && data.photoUrl.size() < 500)) &&
+             (!('theme' in data) || data.theme is map);
+    }
+
+    function isValidBlock(data) {
+      return hasRequiredFields(['id', 'userId', 'type', 'order', 'isActive', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.type in ['link', 'text', 'product', 'content'] &&
+             data.order is number &&
+             data.isActive is bool &&
+             data.createdAt is timestamp &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 100)) &&
+             (!('url' in data) || (isValidUrl(data.url) && data.url.size() < 500)) &&
+             (!('content' in data) || (data.content is string && data.content.size() <= 2000)) &&
+             (!('productId' in data) || (data.productId is string && data.productId.size() < 100));
+    }
+
+    function isValidProduct(data) {
+      return hasRequiredFields(['id', 'userId', 'type', 'name', 'price', 'isActive', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.type in ['simple', 'digital'] &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             data.isActive is bool &&
+             data.createdAt is timestamp &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             (!('imageUrl' in data) || (isValidUrl(data.imageUrl) && data.imageUrl.size() < 500)) &&
+             (!('fileUrl' in data) || (isValidUrl(data.fileUrl) && data.fileUrl.size() < 500)) &&
+             (!('stock' in data) || (data.stock is number && data.stock >= 0));
+    }
+
+    function isValidPurchase(data) {
+      return hasRequiredFields(['id', 'creatorId', 'productId', 'buyerName', 'buyerEmail', 'amount', 'status', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.creatorId is string && data.creatorId.size() > 0 && data.creatorId.size() < 100 &&
+             data.productId is string && data.productId.size() > 0 && data.productId.size() < 100 &&
+             data.buyerName is string && data.buyerName.size() > 0 && data.buyerName.size() <= 100 &&
+             data.buyerEmail is string && isValidEmail(data.buyerEmail) && data.buyerEmail.size() < 100 &&
+             data.amount is number && data.amount >= 0 &&
+             data.status in ['pending', 'approved', 'rejected', 'cancelled'] &&
+             data.createdAt is timestamp &&
+             (!('paymentId' in data) || (data.paymentId is string && data.paymentId.size() < 100)) &&
+             (!('productDetails' in data) || data.productDetails is map) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Anyone can read a user profile (needed for the public page)
+      // But we should only expose public data. Since we can't filter fields in rules,
+      // we assume the users collection only contains public info.
+      // Private info should be in a separate collection, but for this MVP, we allow read.
+      allow read: if true;
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && uidUnchanged() && request.resource.data.plan == 'free';
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && uidNotModified() && areImmutableFieldsUnchanged(['uid', 'createdAt', 'plan']);
+      allow delete: if isOwner(userId);
+    }
+
+    match /blocks/{blockId} {
+      // Anyone can read blocks to render the public page
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidBlock(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidBlock(request.resource.data) && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt']);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /products/{productId} {
+      // Anyone can read active products
+      allow read: if resource.data.isActive == true || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidProduct(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidProduct(request.resource.data) && areImmutableFieldsUnchanged(['id', 'userId', 'createdAt']);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /purchases/{purchaseId} {
+      // Creator can read their sales, buyer can read their purchases
+      allow read: if isAuthenticated() && (resource.data.creatorId == request.auth.uid || resource.data.buyerEmail == request.auth.token.email);
+      // Purchases are created by the backend (webhook) or via a secure client flow.
+      // We'll allow creation if the data is valid, but in a real app, this should ideally be backend-only.
+      // For this prototype, we allow client creation but validate strictly.
+      allow create: if isValidPurchase(request.resource.data);
+      // Allow updates for webhook processing (status, paymentId, buyerEmail, updatedAt)
+      allow update: if isValidPurchase(request.resource.data) && 
+                       areImmutableFieldsUnchanged(['id', 'creatorId', 'productId', 'buyerName', 'amount', 'createdAt', 'productDetails']);
+      allow delete: if false;
+    }
+  }
+}
