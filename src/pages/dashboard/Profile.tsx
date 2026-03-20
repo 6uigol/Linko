@@ -1,41 +1,61 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
+import React, { useEffect, useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import DashboardLayout from '../../components/DashboardLayout';
+import { useAuth } from '../../contexts/AuthContext';
+import { db } from '../../lib/firebase';
+import { uploadFile } from '../../lib/app-data';
 
 export default function Profile() {
-  const { profile, user, refreshProfile } = useAuth();
+  const { user, profile } = useAuth();
   const [name, setName] = useState('');
+  const [pageName, setPageName] = useState('');
   const [bio, setBio] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [accent, setAccent] = useState('#5B5CF6');
+  const [background, setBackground] = useState('#0B0F1A');
+  const [surface, setSurface] = useState('#111827');
+  const [text, setText] = useState('#F9FAFB');
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (profile) {
-      setName(profile.name || '');
-      setBio(profile.bio || '');
-    }
+    if (!profile) return;
+    setName(profile.name || '');
+    setPageName(profile.pageName || '');
+    setBio(profile.bio || '');
+    setPhotoUrl(profile.photoUrl || '');
+    setAccent(profile.theme?.accent || '#5B5CF6');
+    setBackground(profile.theme?.background || '#0B0F1A');
+    setSurface(profile.theme?.surface || '#111827');
+    setText(profile.theme?.text || '#F9FAFB');
   }, [profile]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || !profile?.slug) return;
     setLoading(true);
     setMessage('');
 
     try {
-      const docRef = doc(db, 'users', user.uid);
-      await updateDoc(docRef, {
-        name,
-        bio,
-      });
-      await refreshProfile();
-      setMessage('Perfil atualizado com sucesso!');
-    } catch (error) {
-      console.error(error);
-      setMessage('Erro ao atualizar perfil.');
+      const uploadedPhoto = photoFile ? await uploadFile(user.uid, 'avatars', photoFile) : photoUrl;
+      const payload = {
+        name: name.trim(),
+        pageName: pageName.trim(),
+        bio: bio.trim(),
+        photoUrl: uploadedPhoto,
+        theme: { accent, background, surface, text },
+      };
+
+      await Promise.all([
+        updateDoc(doc(db, 'users', user.uid), payload),
+        updateDoc(doc(db, 'pages', profile.slug), payload),
+      ]);
+
+      setMessage('Perfil e identidade visual atualizados com sucesso.');
+    } catch (err) {
+      console.error(err);
+      setMessage('Não foi possível salvar suas alterações.');
     } finally {
       setLoading(false);
     }
@@ -43,72 +63,71 @@ export default function Profile() {
 
   return (
     <DashboardLayout>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-text-primary">Editar Perfil</h1>
-      </div>
+      <div className="rounded-3xl border border-border-dark bg-surface p-8 shadow-xl">
+        <h1 className="text-3xl font-bold">Perfil, branding e página</h1>
+        <p className="mt-2 text-sm text-text-secondary">Edite seus dados públicos e personalize as cores da sua página.</p>
 
-      <div className="bg-surface shadow-lg rounded-2xl p-6 border border-border-dark">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {message && (
-            <div className={`p-4 rounded-xl text-sm ${message.includes('sucesso') ? 'bg-success/10 border border-success/20 text-success' : 'bg-error/10 border border-error/20 text-error'}`}>
-              {message}
-            </div>
-          )}
+        <form onSubmit={handleSubmit} className="mt-8 grid gap-8 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-5">
+            {message && <div className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-text-primary">{message}</div>}
 
-          <div>
-            <label htmlFor="slug" className="block text-sm font-medium text-text-secondary">
-              Sua URL (Não editável)
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Seu link público</span>
+              <input disabled value={profile?.slug ? `${window.location.origin}/${profile.slug}` : ''} className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 text-text-muted" />
             </label>
-            <div className="mt-2">
-              <input
-                type="text"
-                disabled
-                value={`linko.com/${profile?.slug}`}
-                className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-muted shadow-sm ring-1 ring-inset ring-border-dark sm:text-sm sm:leading-6 cursor-not-allowed"
-              />
-            </div>
-          </div>
 
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-text-secondary">
-              Nome de Exibição
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Nome</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} required className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" />
             </label>
-            <div className="mt-2">
-              <input
-                type="text"
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-all"
-              />
-            </div>
-          </div>
 
-          <div>
-            <label htmlFor="bio" className="block text-sm font-medium text-text-secondary">
-              Biografia
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Nome da página</span>
+              <input value={pageName} onChange={(e) => setPageName(e.target.value)} required className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" />
             </label>
-            <div className="mt-2">
-              <textarea
-                id="bio"
-                rows={4}
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-all"
-                placeholder="Conte um pouco sobre você..."
-              />
-            </div>
-          </div>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex justify-center rounded-xl bg-gradient-primary px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 transition-all"
-            >
-              {loading ? 'Salvando...' : 'Salvar Alterações'}
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Bio</span>
+              <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={4} className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" />
+            </label>
+
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Foto</span>
+              <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)} className="w-full rounded-xl border border-dashed border-border-dark bg-bg-dark px-4 py-3 text-text-secondary" />
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {[
+                ['Cor destaque', accent, setAccent],
+                ['Fundo', background, setBackground],
+                ['Cartões', surface, setSurface],
+                ['Texto', text, setText],
+              ].map(([label, value, setter]) => (
+                <label key={label} className="block text-sm">
+                  <span className="mb-2 block text-text-secondary">{label}</span>
+                  <input type="color" value={value as string} onChange={(e) => (setter as React.Dispatch<React.SetStateAction<string>>)(e.target.value)} className="h-12 w-full rounded-xl border border-border-dark bg-bg-dark p-1" />
+                </label>
+              ))}
+            </div>
+
+            <button disabled={loading} className="rounded-xl bg-gradient-primary px-5 py-3 font-semibold text-white disabled:opacity-60">
+              {loading ? 'Salvando...' : 'Salvar alterações'}
             </button>
+          </div>
+
+          <div className="rounded-3xl border border-border-dark p-6" style={{ background, color: text }}>
+            <p className="text-sm opacity-70">Preview rápido</p>
+            <div className="mt-6 rounded-[2rem] p-6" style={{ background: surface }}>
+              {photoFile || photoUrl ? (
+                <img src={photoFile ? URL.createObjectURL(photoFile) : photoUrl} alt="Preview" className="mx-auto h-20 w-20 rounded-full object-cover" />
+              ) : (
+                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full text-2xl font-bold" style={{ background: accent }}>
+                  {name.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <h2 className="mt-4 text-center text-2xl font-bold">{pageName || 'Sua página'}</h2>
+              <p className="mt-3 text-center text-sm opacity-80">{bio || 'Sua bio aparecerá aqui.'}</p>
+            </div>
           </div>
         </form>
       </div>

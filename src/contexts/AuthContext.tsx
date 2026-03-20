@@ -1,27 +1,14 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-
-interface UserProfile {
-  uid: string;
-  email: string;
-  name: string;
-  slug?: string;
-  bio?: string;
-  photoUrl?: string;
-  theme?: any;
-  plan: 'free' | 'pro';
-  createdAt: string;
-  onboardingCompleted: boolean;
-}
+import type { UserProfile } from '../lib/app-data';
 
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
   logout: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,55 +18,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (uid: string) => {
-    try {
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setProfile(docSnap.data() as UserProfile);
-      } else {
-        setProfile(null);
-      }
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      setProfile(null);
-    }
-  };
-
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeProfile: (() => void) | undefined;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (currentUser) {
-        await fetchProfile(currentUser.uid);
-      } else {
-        setProfile(null);
+
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = undefined;
       }
-      setLoading(false);
+
+      if (!currentUser) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      unsubscribeProfile = onSnapshot(
+        doc(db, 'users', currentUser.uid),
+        (snapshot) => {
+          setProfile(snapshot.exists() ? (snapshot.data() as UserProfile) : null);
+          setLoading(false);
+        },
+        () => {
+          setProfile(null);
+          setLoading(false);
+        },
+      );
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      unsubscribeProfile?.();
+    };
   }, []);
 
-  const logout = async () => {
-    await signOut(auth);
-  };
-
-  const refreshProfile = async () => {
-    if (user) {
-      await fetchProfile(user.uid);
-    }
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, profile, loading, logout, refreshProfile }}>
-      {!loading && children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      user,
+      profile,
+      loading,
+      logout: async () => signOut(auth),
+    }),
+    [loading, profile, user],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

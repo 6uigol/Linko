@@ -1,241 +1,159 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, updateDoc, getDocs, query, collection, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { getPublicPreview, isSlugAvailable, reserveSlugAndCompleteOnboarding, slugify, uploadFile } from '../../lib/app-data';
 
 export default function Onboarding() {
-  const { user, profile, refreshProfile } = useAuth();
-  const [pageName, setPageName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [bio, setBio] = useState('');
-  const [photoUrl, setPhotoUrl] = useState('');
-  
-  const [slugError, setSlugError] = useState('');
-  const [isCheckingSlug, setIsCheckingSlug] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
+  const [pageName, setPageName] = useState(profile?.pageName || profile?.name || '');
+  const [slug, setSlug] = useState(profile?.slug || slugify(profile?.name || ''));
+  const [bio, setBio] = useState(profile?.bio || '');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState(profile?.photoUrl || '');
+  const [slugStatus, setSlugStatus] = useState<'idle' | 'checking' | 'available' | 'unavailable'>('idle');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Redirect if already completed
   useEffect(() => {
     if (profile?.onboardingCompleted) {
-      navigate('/dashboard');
+      navigate('/dashboard', { replace: true });
     }
-  }, [profile, navigate]);
+  }, [navigate, profile?.onboardingCompleted]);
 
-  const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Apenas letras minúsculas, números e hífens
-    const value = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
-    setSlug(value);
-    setSlugError('');
-  };
-
-  const checkSlugAvailability = async (slugToCheck: string) => {
-    if (!slugToCheck) return false;
-    
-    setIsCheckingSlug(true);
-    try {
-      const q = query(collection(db, 'users'), where('slug', '==', slugToCheck));
-      const querySnapshot = await getDocs(q);
-      
-      // If it's not empty, it means the slug is taken.
-      // We also need to make sure the taken slug doesn't belong to the current user (though unlikely in onboarding)
-      const isTaken = !querySnapshot.empty && querySnapshot.docs[0].id !== user?.uid;
-      
-      if (isTaken) {
-        setSlugError('Este link já está em uso. Que tal tentar: ' + slugToCheck + '-' + Math.floor(Math.random() * 1000));
-        return false;
-      }
-      
-      setSlugError('');
-      return true;
-    } catch (err) {
-      console.error('Error checking slug:', err);
-      return false;
-    } finally {
-      setIsCheckingSlug(false);
-    }
-  };
-
-  // Debounce slug check
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (slug.length > 2) {
-        checkSlugAvailability(slug);
-      }
-    }, 500);
+    if (!slug || slug.length < 3) {
+      setSlugStatus('idle');
+      return;
+    }
 
-    return () => clearTimeout(timer);
-  }, [slug]);
+    const timer = window.setTimeout(async () => {
+      setSlugStatus('checking');
+      const available = await isSlugAvailable(slug, user?.uid);
+      setSlugStatus(available ? 'available' : 'unavailable');
+    }, 400);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    return () => window.clearTimeout(timer);
+  }, [slug, user?.uid]);
+
+  const previewUrl = useMemo(() => getPublicPreview(slug), [slug]);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
-    
-    if (!user) return;
-    
+
+    if (!user || !user.email) return;
+
     if (!pageName.trim()) {
-      setError('O nome da página é obrigatório.');
+      setError('Informe o nome da página.');
       return;
     }
 
-    if (!slug.trim()) {
-      setError('O link da página é obrigatório.');
+    if (!slug.trim() || slug.length < 3) {
+      setError('Escolha um username com pelo menos 3 caracteres.');
       return;
     }
 
-    if (slugError) {
-      setError('Por favor, escolha um link válido e disponível.');
+    if (slugStatus === 'unavailable') {
+      setError('Esse username já está em uso.');
       return;
     }
 
     setLoading(true);
-
     try {
-      // Final check before saving
-      const isAvailable = await checkSlugAvailability(slug);
-      if (!isAvailable) {
-        throw new Error('Este link já está em uso. Escolha outro.');
-      }
-
-      // Update user profile
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        pageName,
+      const photoUrl = photoFile ? await uploadFile(user.uid, 'avatars', photoFile) : photoPreview;
+      await reserveSlugAndCompleteOnboarding({
+        uid: user.uid,
+        email: user.email,
+        name: profile?.name || user.displayName || pageName,
+        pageName: pageName.trim(),
         slug,
-        bio,
+        bio: bio.trim(),
         photoUrl,
-        onboardingCompleted: true,
       });
-
-      await refreshProfile();
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Falha ao salvar os dados. Tente novamente.');
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
       console.error(err);
+      setError('Não foi possível concluir seu onboarding agora.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8 bg-bg-dark">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-text-primary">
-          Crie sua página pública
-        </h2>
-        <p className="mt-2 text-center text-sm text-text-secondary">
-          Personalize como as pessoas vão ver o seu perfil.
-        </p>
-      </div>
+    <div className="min-h-screen bg-bg-dark px-6 py-12 text-text-primary">
+      <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-3xl border border-border-dark bg-surface p-8 shadow-2xl">
+          <p className="text-sm uppercase tracking-[0.3em] text-primary">Primeiro acesso</p>
+          <h1 className="mt-3 text-3xl font-bold">Configure sua página pública</h1>
+          <p className="mt-2 text-sm text-text-secondary">Solicitamos apenas o que é essencial para publicar sua página.</p>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-surface py-8 px-4 shadow-lg sm:rounded-2xl sm:px-10 border border-border-dark">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {error && (
-              <div className="bg-error/10 border border-error/20 text-error p-3 rounded-xl text-sm">
-                {error}
+          <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+            {error && <div className="rounded-2xl border border-error/20 bg-error/10 p-3 text-sm text-error">{error}</div>}
+
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Nome da página</span>
+              <input value={pageName} onChange={(e) => setPageName(e.target.value)} required className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" placeholder="Ex: Studio da Ana" />
+            </label>
+
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Username único</span>
+              <div className="flex overflow-hidden rounded-xl border border-border-dark bg-bg-dark">
+                <span className="border-r border-border-dark px-4 py-3 text-text-muted">/</span>
+                <input
+                  value={slug}
+                  onChange={(e) => setSlug(slugify(e.target.value))}
+                  required
+                  className="w-full bg-transparent px-4 py-3 outline-none"
+                  placeholder="seu-username"
+                />
+              </div>
+              <p className="mt-2 text-xs text-text-muted">Preview: {previewUrl}</p>
+              {slugStatus === 'checking' && <p className="mt-1 text-xs text-text-muted">Verificando disponibilidade...</p>}
+              {slugStatus === 'available' && <p className="mt-1 text-xs text-success">Username disponível.</p>}
+              {slugStatus === 'unavailable' && <p className="mt-1 text-xs text-error">Esse username já está em uso.</p>}
+            </label>
+
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Bio opcional</span>
+              <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={4} className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" placeholder="Explique quem é você e o que vende." />
+            </label>
+
+            <label className="block text-sm">
+              <span className="mb-2 block text-text-secondary">Foto opcional</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setPhotoFile(file);
+                  setPhotoPreview(file ? URL.createObjectURL(file) : profile?.photoUrl || '');
+                }}
+                className="w-full rounded-xl border border-dashed border-border-dark bg-bg-dark px-4 py-3 text-text-secondary"
+              />
+            </label>
+
+            <button disabled={loading || slugStatus === 'checking' || slugStatus === 'unavailable'} className="w-full rounded-xl bg-gradient-primary px-4 py-3 font-semibold text-white disabled:opacity-60">
+              {loading ? 'Publicando...' : 'Concluir onboarding'}
+            </button>
+          </form>
+        </section>
+
+        <aside className="rounded-3xl border border-border-dark bg-surface p-8 shadow-2xl">
+          <p className="text-sm uppercase tracking-[0.3em] text-primary">Preview</p>
+          <div className="mt-6 rounded-[2rem] border border-border-dark bg-bg-dark p-6 text-center">
+            {photoPreview ? (
+              <img src={photoPreview} alt="Preview" className="mx-auto h-24 w-24 rounded-full object-cover" />
+            ) : (
+              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-surface text-3xl font-bold text-primary">
+                {(pageName || 'L').charAt(0).toUpperCase()}
               </div>
             )}
-
-            <div>
-              <label htmlFor="pageName" className="block text-sm font-medium text-text-secondary">
-                Nome da Página <span className="text-error">*</span>
-              </label>
-              <div className="mt-1">
-                <input
-                  id="pageName"
-                  name="pageName"
-                  type="text"
-                  required
-                  value={pageName}
-                  onChange={(e) => setPageName(e.target.value)}
-                  className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm transition-all"
-                  placeholder="Ex: Guilherme Lima"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="slug" className="block text-sm font-medium text-text-secondary">
-                Seu Link Único <span className="text-error">*</span>
-              </label>
-              <div className="mt-1 flex rounded-xl shadow-sm ring-1 ring-inset ring-border-dark focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary bg-bg-dark overflow-hidden transition-all">
-                <span className="inline-flex items-center px-3 text-text-muted sm:text-sm border-r border-border-dark bg-surface/50">
-                  linko.com/
-                </span>
-                <input
-                  type="text"
-                  name="slug"
-                  id="slug"
-                  required
-                  value={slug}
-                  onChange={handleSlugChange}
-                  className="block w-full min-w-0 flex-1 border-0 bg-transparent py-2.5 px-3 text-text-primary placeholder:text-text-muted focus:ring-0 sm:text-sm"
-                  placeholder="seu-nome"
-                />
-              </div>
-              {slugError && (
-                <p className="mt-2 text-sm text-error" id="slug-error">
-                  {slugError}
-                </p>
-              )}
-              {isCheckingSlug && (
-                <p className="mt-2 text-sm text-text-muted">Verificando disponibilidade...</p>
-              )}
-              {!slugError && !isCheckingSlug && slug.length > 2 && (
-                <p className="mt-2 text-sm text-success">
-                  Link disponível! Sua página será: <strong>linko.com/{slug}</strong>
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="bio" className="block text-sm font-medium text-text-secondary">
-                Bio (Opcional)
-              </label>
-              <div className="mt-1">
-                <textarea
-                  id="bio"
-                  name="bio"
-                  rows={3}
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                  className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm transition-all"
-                  placeholder="Conte um pouco sobre você..."
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="photoUrl" className="block text-sm font-medium text-text-secondary">
-                URL da Foto de Perfil (Opcional)
-              </label>
-              <div className="mt-1">
-                <input
-                  id="photoUrl"
-                  name="photoUrl"
-                  type="url"
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm transition-all"
-                  placeholder="https://exemplo.com/sua-foto.jpg"
-                />
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={loading || !!slugError || isCheckingSlug}
-                className="flex w-full justify-center rounded-xl bg-gradient-primary px-3 py-2.5 text-sm font-semibold leading-6 text-white shadow-md hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 transition-all"
-              >
-                {loading ? 'Salvando...' : 'Concluir e ir para o Dashboard'}
-              </button>
-            </div>
-          </form>
-        </div>
+            <h2 className="mt-4 text-2xl font-bold">{pageName || 'Sua página'}</h2>
+            <p className="mt-1 text-sm text-text-muted">{previewUrl}</p>
+            <p className="mt-4 whitespace-pre-wrap text-sm text-text-secondary">{bio || 'Sua bio opcional aparecerá aqui.'}</p>
+          </div>
+        </aside>
       </div>
     </div>
   );
