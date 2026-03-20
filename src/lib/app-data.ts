@@ -28,12 +28,23 @@ export type PlanType = 'free' | 'pro';
 export type BlockType = 'link' | 'text' | 'product' | 'content';
 export type ProductType = 'simple' | 'digital';
 export type PurchaseStatus = 'pending' | 'paid' | 'refused';
+export type AppearanceMode = 'system' | 'dark' | 'light';
 
 export interface ThemeConfig {
   accent: string;
   background: string;
   surface: string;
   text: string;
+}
+
+export interface PaymentConfig {
+  pixOrTransferLabel: string;
+  bankName: string;
+  institutionCode: string;
+  branch: string;
+  account: string;
+  holder: string;
+  message: string;
 }
 
 export interface UserProfile {
@@ -50,6 +61,8 @@ export interface UserProfile {
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
   theme: ThemeConfig;
+  appearance: AppearanceMode;
+  paymentConfig: PaymentConfig;
 }
 
 export interface PageRecord {
@@ -61,6 +74,8 @@ export interface PageRecord {
   photoUrl?: string;
   theme: ThemeConfig;
   plan: PlanType;
+  appearance?: AppearanceMode;
+  paymentConfig?: PaymentConfig;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
 }
@@ -120,10 +135,20 @@ export interface AccessRecord {
 }
 
 export const DEFAULT_THEME: ThemeConfig = {
-  accent: '#5B5CF6',
-  background: '#0B0F1A',
-  surface: '#111827',
-  text: '#F9FAFB',
+  accent: '#6D5EF7',
+  background: '#07111f',
+  surface: '#0f1729',
+  text: '#f8fafc',
+};
+
+export const DEFAULT_PAYMENT_CONFIG: PaymentConfig = {
+  pixOrTransferLabel: 'Conta principal Nubank',
+  bankName: 'Nu Pagamentos S.A. - Instituição de Pagamento',
+  institutionCode: '0260',
+  branch: '0001',
+  account: '40616163-2',
+  holder: 'Conta cadastrada',
+  message: 'Use esta conta como recebimento manual quando quiser confirmar pagamentos diretamente com o cliente.',
 };
 
 function mapDoc<T>(snapshot: QueryDocumentSnapshot<DocumentData>) {
@@ -183,6 +208,8 @@ export async function createInitialProfile(uid: string, payload: { email: string
     plan: 'free',
     onboardingCompleted: false,
     theme: DEFAULT_THEME,
+    appearance: 'system',
+    paymentConfig: DEFAULT_PAYMENT_CONFIG,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -213,6 +240,8 @@ export async function reserveSlugAndCompleteOnboarding(params: {
       bio: params.bio || '',
       photoUrl: params.photoUrl || '',
       theme: DEFAULT_THEME,
+      appearance: 'system',
+      paymentConfig: DEFAULT_PAYMENT_CONFIG,
       plan: 'free',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -230,6 +259,8 @@ export async function reserveSlugAndCompleteOnboarding(params: {
       plan: 'free',
       onboardingCompleted: true,
       theme: DEFAULT_THEME,
+      appearance: 'system',
+      paymentConfig: DEFAULT_PAYMENT_CONFIG,
       updatedAt: serverTimestamp(),
     }, { merge: true });
   });

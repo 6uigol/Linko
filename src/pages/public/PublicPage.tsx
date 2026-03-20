@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Lock, Package, ShoppingCart } from 'lucide-react';
+import { CreditCard, Lock, Package, ShoppingCart, Sparkles } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchAccessByEmail, fetchPublicPage, formatCurrency, type AccessRecord, type BlockRecord, type PageRecord, type ProductRecord } from '../../lib/app-data';
 
@@ -84,91 +84,142 @@ export default function PublicPage() {
     );
   }
 
+  const accent = page.theme?.accent || '#6D5EF7';
+  const background = page.theme?.background || '#07111f';
+  const surface = page.theme?.surface || '#0f1729';
+  const text = page.theme?.text || '#f8fafc';
+
   return (
-    <div className="min-h-screen px-4 py-10" style={{ background: page.theme?.background || '#0B0F1A', color: page.theme?.text || '#F9FAFB' }}>
-      <div className="mx-auto max-w-xl">
-        <div className="rounded-[2rem] border border-white/10 p-8 text-center shadow-2xl" style={{ background: page.theme?.surface || '#111827' }}>
-          {page.photoUrl ? (
-            <img src={page.photoUrl} alt={page.pageName} className="mx-auto h-24 w-24 rounded-full object-cover" />
-          ) : (
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full text-3xl font-bold" style={{ background: page.theme?.accent || '#5B5CF6' }}>
-              {page.pageName.charAt(0).toUpperCase()}
+    <div className="min-h-screen px-4 py-8 sm:px-6 sm:py-10" style={{ background, color: text }}>
+      <div className="mx-auto max-w-6xl">
+        <div className="grid gap-6 lg:grid-cols-[0.72fr_0.28fr] lg:items-start">
+          <div className="rounded-[32px] border border-white/10 p-6 shadow-2xl backdrop-blur-xl sm:p-8" style={{ background: surface }}>
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-4">
+                {page.photoUrl ? (
+                  <img src={page.photoUrl} alt={page.pageName} className="h-24 w-24 rounded-full object-cover" />
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center rounded-full text-3xl font-bold" style={{ background: accent }}>
+                    {page.pageName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs uppercase tracking-[0.34em] opacity-60">Página pública</p>
+                  <h1 className="mt-2 text-3xl font-bold sm:text-4xl">{page.pageName}</h1>
+                  {page.bio && <p className="mt-3 max-w-2xl text-sm opacity-80 sm:text-base">{page.bio}</p>}
+                </div>
+              </div>
+              <div className="rounded-[24px] border border-white/10 px-4 py-4 text-sm" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <div className="flex items-center gap-2 font-semibold" style={{ color: accent }}>
+                  <Sparkles className="h-4 w-4" />
+                  Oferta profissional
+                </div>
+                <p className="mt-2 max-w-xs opacity-80">Experiência premium com checkout e opção de pagamento manual para negociações personalizadas.</p>
+              </div>
             </div>
-          )}
-          <h1 className="mt-5 text-3xl font-bold">{page.pageName}</h1>
-          {page.bio && <p className="mt-3 text-sm opacity-80">{page.bio}</p>}
 
-          {checkoutError && <div className="mt-6 rounded-2xl border border-error/20 bg-error/10 p-3 text-sm text-error">{checkoutError}</div>}
+            {checkoutError && <div className="mt-6 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{checkoutError}</div>}
 
-          <div className="mt-8 space-y-4 text-left">
-            {blocks.map((block) => {
-              const hasAccess = block.productId ? accessProductIds.has(block.productId) : false;
-              if (block.type === 'link') {
+            <div className="mt-8 space-y-4 text-left">
+              {blocks.map((block) => {
+                const hasAccess = block.productId ? accessProductIds.has(block.productId) : false;
+                if (block.type === 'link') {
+                  return (
+                    <a key={block.id} href={block.url} target="_blank" rel="noreferrer" className="block rounded-[24px] border border-white/10 px-5 py-4 font-semibold transition hover:opacity-90" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                      {block.title}
+                    </a>
+                  );
+                }
+
+                if (block.type === 'content' && !hasAccess) {
+                  return (
+                    <div key={block.id} className="rounded-[24px] border border-white/10 px-5 py-4 opacity-80" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                      <div className="flex items-center gap-2 font-semibold"><Lock className="h-4 w-4" /> {block.title}</div>
+                      <p className="mt-2 text-sm">Compre o produto relacionado para liberar este conteúdo exclusivo.</p>
+                    </div>
+                  );
+                }
+
                 return (
-                  <a key={block.id} href={block.url} target="_blank" rel="noreferrer" className="block rounded-2xl border border-white/10 px-5 py-4 font-semibold hover:opacity-90">
-                    {block.title}
-                  </a>
-                );
-              }
-
-              if (block.type === 'content' && !hasAccess) {
-                return (
-                  <div key={block.id} className="rounded-2xl border border-white/10 px-5 py-4 opacity-80">
-                    <div className="flex items-center gap-2 font-semibold"><Lock className="h-4 w-4" /> {block.title}</div>
-                    <p className="mt-2 text-sm">Compre o produto relacionado para liberar este conteúdo exclusivo.</p>
+                  <div key={block.id} className="rounded-[24px] border border-white/10 px-5 py-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <p className="font-semibold">{block.title}</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm opacity-85">{block.content}</p>
                   </div>
                 );
-              }
-
-              return (
-                <div key={block.id} className="rounded-2xl border border-white/10 px-5 py-4">
-                  <p className="font-semibold">{block.title}</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm opacity-85">{block.content}</p>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-10 text-left">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" style={{ color: page.theme?.accent || '#5B5CF6' }} />
-              <h2 className="text-xl font-bold">Produtos</h2>
+              })}
             </div>
-            <div className="mt-4 space-y-4">
-              {products.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 p-4 text-sm opacity-75">Nenhum produto publicado ainda.</div>
-              ) : (
-                products.map((product) => {
-                  const canAccess = accessProductIds.has(product.id);
-                  return (
-                    <article key={product.id} className="rounded-2xl border border-white/10 p-5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Package className="h-4 w-4" />
-                            <h3 className="text-lg font-bold">{product.name}</h3>
+
+            <div className="mt-10 text-left">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5" style={{ color: accent }} />
+                <h2 className="text-2xl font-bold">Produtos</h2>
+              </div>
+              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                {products.length === 0 ? (
+                  <div className="rounded-[24px] border border-white/10 p-4 text-sm opacity-75">Nenhum produto publicado ainda.</div>
+                ) : (
+                  products.map((product) => {
+                    const canAccess = accessProductIds.has(product.id);
+                    return (
+                      <article key={product.id} className="rounded-[24px] border border-white/10 p-5" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4" />
+                              <h3 className="text-lg font-bold">{product.name}</h3>
+                            </div>
+                            <p className="mt-2 text-sm opacity-80">{product.description || 'Sem descrição.'}</p>
                           </div>
-                          <p className="mt-2 text-sm opacity-80">{product.description || 'Sem descrição.'}</p>
+                          <span className="text-lg font-bold" style={{ color: accent }}>{formatCurrency(product.price)}</span>
                         </div>
-                        <span className="text-lg font-bold" style={{ color: page.theme?.accent || '#5B5CF6' }}>{formatCurrency(product.price)}</span>
-                      </div>
-                      <div className="mt-5 flex flex-wrap gap-3">
-                        {canAccess && product.fileUrl ? (
-                          <a href={product.fileUrl} target="_blank" rel="noreferrer" className="rounded-xl px-4 py-3 text-sm font-semibold text-white" style={{ background: page.theme?.accent || '#5B5CF6' }}>
-                            Acessar agora
-                          </a>
-                        ) : (
-                          <button onClick={() => void startCheckout(product)} className="rounded-xl px-4 py-3 text-sm font-semibold text-white" style={{ background: page.theme?.accent || '#5B5CF6' }}>
-                            Comprar
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })
-              )}
+                        <div className="mt-5 flex flex-wrap gap-3">
+                          {canAccess && product.fileUrl ? (
+                            <a href={product.fileUrl} target="_blank" rel="noreferrer" className="rounded-2xl px-4 py-3 text-sm font-semibold text-white" style={{ background: accent }}>
+                              Acessar agora
+                            </a>
+                          ) : (
+                            <button onClick={() => void startCheckout(product)} className="rounded-2xl px-4 py-3 text-sm font-semibold text-white" style={{ background: accent }}>
+                              Comprar com checkout
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
+
+          <aside className="space-y-6">
+            <div className="rounded-[32px] border border-white/10 p-6 shadow-2xl backdrop-blur-xl" style={{ background: surface }}>
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl p-3" style={{ background: `${accent}20`, color: accent }}>
+                  <CreditCard className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.28em] opacity-60">Pagamento manual</p>
+                  <h2 className="mt-1 text-xl font-bold">{page.paymentConfig?.pixOrTransferLabel || 'Conta principal'}</h2>
+                </div>
+              </div>
+              <div className="mt-5 space-y-3 text-sm opacity-85">
+                <div className="rounded-2xl border border-white/10 px-4 py-3">Instituição: {page.paymentConfig?.bankName || 'Não configurada'}</div>
+                <div className="rounded-2xl border border-white/10 px-4 py-3">Banco: {page.paymentConfig?.institutionCode || '-'}</div>
+                <div className="rounded-2xl border border-white/10 px-4 py-3">Agência: {page.paymentConfig?.branch || '-'}</div>
+                <div className="rounded-2xl border border-white/10 px-4 py-3">Conta: {page.paymentConfig?.account || '-'}</div>
+              </div>
+              <p className="mt-4 text-sm opacity-80">{page.paymentConfig?.message || 'Use esta opção para negociações e assinaturas confirmadas manualmente.'}</p>
+            </div>
+
+            <div className="rounded-[32px] border border-white/10 p-6 shadow-2xl backdrop-blur-xl" style={{ background: surface }}>
+              <p className="text-xs uppercase tracking-[0.28em] opacity-60">Assinatura</p>
+              <h2 className="mt-2 text-2xl font-bold">Quer uma oferta contínua?</h2>
+              <p className="mt-3 text-sm opacity-80">Apresente seu plano premium, combine um pagamento manual e libere acesso com acompanhamento mais próximo.</p>
+              <button className="mt-5 w-full rounded-2xl px-4 py-3 text-sm font-semibold text-white" style={{ background: accent }}>
+                Assinar agora
+              </button>
+            </div>
+          </aside>
         </div>
       </div>
     </div>
