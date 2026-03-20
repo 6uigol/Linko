@@ -280,7 +280,7 @@ export default function Products() {
             <div className="flex justify-end space-x-3 mt-6 pt-4">
               <button
                 type="button"
-                onClick={() => setIsAdding(false)}
+                onClick={handleCloseForm}
                 className="px-4 py-2.5 rounded-xl text-sm font-medium text-text-secondary hover:bg-bg-dark transition-colors"
               >
                 Cancelar
@@ -297,7 +297,7 @@ export default function Products() {
       )}
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {products.length === 0 && !isAdding ? (
+        {products.length === 0 && !isFormOpen ? (
           <div className="col-span-full text-center py-12 bg-surface rounded-2xl shadow-sm border border-dashed border-border-dark">
             <p className="text-sm text-text-muted">Nenhum produto cadastrado ainda.</p>
           </div>

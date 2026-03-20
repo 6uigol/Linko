@@ -5,7 +5,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, collection, addDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, collection, addDoc, updateDoc } from 'firebase/firestore';
 import fs from 'fs';
 
 dotenv.config();
@@ -13,7 +13,7 @@ dotenv.config();
 // Initialize Firebase client SDK in Node.js
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
 const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+const db = getFirestore(firebaseApp);
 
 // Initialize Mercado Pago
 const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || 'TEST-1234567890-123456-1234567890abcdef1234567890abcdef-123456789' });

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Link as LinkIcon, ShoppingBag, Users, Zap, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Flame, Link as LinkIcon, ShoppingBag } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -40,9 +40,13 @@ export default function Home() {
             <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-6xl mb-6">
               Tudo o que você precisa em um <span className="text-transparent bg-clip-text bg-gradient-primary">só link</span>
             </h1>
-            <p className="mt-6 text-lg leading-8 text-text-secondary mb-10">
+            <p className="mt-6 text-lg leading-8 text-text-secondary mb-6">
               Crie sua página pública, venda produtos digitais e gerencie sua área de membros. A plataforma completa para criadores de conteúdo.
             </p>
+            <div className="mb-10 inline-flex items-center gap-3 rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm text-amber-100 shadow-lg shadow-amber-500/10">
+              <img src="/firebase-icon.svg" alt="Firebase" className="h-5 w-5" />
+              <span>Firebase configurado com autenticação, banco de dados e analytics.</span>
+            </div>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
                 to="/register"
@@ -97,13 +101,13 @@ export default function Home() {
                 <div className="flex flex-col bg-bg-dark p-8 rounded-2xl border border-border-dark shadow-sm hover:border-primary/50 transition-colors">
                   <dt className="flex items-center gap-x-3 text-xl font-semibold leading-7 text-text-primary mb-4">
                     <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-primary/10">
-                      <Users className="h-6 w-6 text-primary" aria-hidden="true" />
+                      <Flame className="h-6 w-6 text-primary" aria-hidden="true" />
                     </div>
-                    Área de Membros
+                    Infra com Firebase
                   </dt>
                   <dd className="flex flex-auto flex-col text-base leading-7 text-text-secondary">
                     <p className="flex-auto">
-                      Entregue seus conteúdos digitais de forma segura e automática para seus clientes logo após a compra.
+                      Autenticação, Firestore, Storage e Analytics prontos para sustentar sua operação com a configuração correta do projeto.
                     </p>
                   </dd>
                 </div>
