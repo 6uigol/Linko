@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import type { UserProfile } from '../lib/app-data';
+import type { AppearanceMode, UserProfile } from '../lib/app-data';
 
 interface AuthContextType {
   user: User | null;
@@ -12,6 +12,13 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function resolveAppearance(mode: AppearanceMode) {
+  if (mode === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return mode;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -53,6 +60,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribeProfile?.();
     };
   }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const applyAppearance = () => {
+      const mode = profile?.appearance ?? 'dark';
+      document.documentElement.dataset.theme = resolveAppearance(mode);
+    };
+
+    applyAppearance();
+    media.addEventListener('change', applyAppearance);
+
+    return () => media.removeEventListener('change', applyAppearance);
+  }, [profile?.appearance]);
 
   const value = useMemo(
     () => ({

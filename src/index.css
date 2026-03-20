@@ -1,37 +1,90 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
-@theme {
-  --color-primary: #5B5CF6;
-  --color-primary-hover: #4C4EF5;
-  --color-primary-soft: #8B8CFF;
-  
-  --color-bg-dark: #0B0F1A;
-  --color-surface: #111827;
-  --color-card: #1F2937;
-  
-  --color-text-primary: #F9FAFB;
-  --color-text-secondary: #D1D5DB;
-  --color-text-muted: #9CA3AF;
-  
-  --color-success: #22C55E;
-  --color-error: #EF4444;
-  --color-warning: #F59E0B;
-  --color-info: #3B82F6;
-  
-  --color-border-dark: #374151;
+:root {
+  --bg-app: #07111f;
+  --surface-app: #0f1729;
+  --card-app: #162033;
+  --text-app: #f8fafc;
+  --text-secondary-app: #cbd5e1;
+  --text-muted-app: #94a3b8;
+  --border-app: rgba(148, 163, 184, 0.18);
+  --glow-app: rgba(109, 94, 247, 0.18);
+  color-scheme: dark;
+}
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+:root[data-theme='light'] {
+  --bg-app: #f3f7fb;
+  --surface-app: #ffffff;
+  --card-app: #eef2ff;
+  --text-app: #0f172a;
+  --text-secondary-app: #334155;
+  --text-muted-app: #64748b;
+  --border-app: rgba(15, 23, 42, 0.1);
+  --glow-app: rgba(99, 102, 241, 0.14);
+  color-scheme: light;
+}
+
+@theme {
+  --color-primary: #6D5EF7;
+  --color-primary-hover: #5a4eed;
+  --color-primary-soft: #9b8fff;
+  --color-bg-dark: var(--bg-app);
+  --color-surface: var(--surface-app);
+  --color-card: var(--card-app);
+  --color-text-primary: var(--text-app);
+  --color-text-secondary: var(--text-secondary-app);
+  --color-text-muted: var(--text-muted-app);
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+  --color-border-dark: var(--border-app);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border-dark;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-bg-dark font-sans text-text-primary antialiased;
+    background-image:
+      radial-gradient(circle at top, rgba(109, 94, 247, 0.16), transparent 28%),
+      linear-gradient(180deg, rgba(15, 23, 42, 0.08), transparent 35%);
+  }
+
+  ::selection {
+    background: rgba(109, 94, 247, 0.28);
+  }
 }
 
 @layer utilities {
   .bg-gradient-primary {
     background-image: linear-gradient(135deg, var(--color-primary), var(--color-info));
   }
-}
 
-@layer base {
-  body {
-    @apply bg-bg-dark text-text-primary font-sans antialiased;
+  .bg-grid-premium {
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+    background-size: 42px 42px;
+  }
+
+  .surface-panel {
+    @apply rounded-[28px] border border-border-dark bg-surface/90 shadow-[0_20px_80px_-40px_var(--glow-app)] backdrop-blur-xl;
+  }
+
+  .surface-card {
+    @apply rounded-[24px] border border-border-dark bg-card/70 shadow-[0_16px_60px_-38px_var(--glow-app)] backdrop-blur-xl;
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 }
