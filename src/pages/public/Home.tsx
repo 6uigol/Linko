@@ -43,10 +43,6 @@ export default function Home() {
             <p className="mt-6 text-lg leading-8 text-text-secondary mb-6">
               Crie sua página pública, venda produtos digitais e gerencie sua área de membros. A plataforma completa para criadores de conteúdo.
             </p>
-            <div className="mb-10 inline-flex items-center gap-3 rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm text-amber-100 shadow-lg shadow-amber-500/10">
-              <img src="/firebase-icon.svg" alt="Firebase" className="h-5 w-5" />
-              <span>Firebase configurado com autenticação, banco de dados e analytics.</span>
-            </div>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
                 to="/register"
@@ -103,11 +99,11 @@ export default function Home() {
                     <div className="h-10 w-10 flex items-center justify-center rounded-lg bg-primary/10">
                       <Flame className="h-6 w-6 text-primary" aria-hidden="true" />
                     </div>
-                    Infra com Firebase
+                    Infra pronta para escalar
                   </dt>
                   <dd className="flex flex-auto flex-col text-base leading-7 text-text-secondary">
                     <p className="flex-auto">
-                      Autenticação, Firestore, Storage e Analytics prontos para sustentar sua operação com a configuração correta do projeto.
+                      Estrutura preparada para autenticação, dados e gestão da operação com foco em desempenho e confiabilidade.
                     </p>
                   </dd>
                 </div>
