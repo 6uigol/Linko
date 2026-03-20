@@ -1,167 +1,307 @@
-import express from "express";
-import { createServer as createViteServer } from "vite";
-import cors from "cors";
-import path from "path";
-import dotenv from "dotenv";
-import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, collection, addDoc, updateDoc } from 'firebase/firestore';
-import fs from 'fs';
+import cors from 'cors';
+import crypto from 'crypto';
+import dotenv from 'dotenv';
+import express from 'express';
+import admin from 'firebase-admin';
+import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
+import path from 'path';
+import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
-// Initialize Firebase client SDK in Node.js
-const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
+function getFirebaseAdminApp() {
+  if (admin.apps.length) {
+    return admin.app();
+  }
 
-// Initialize Mercado Pago
-const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || 'TEST-1234567890-123456-1234567890abcdef1234567890abcdef-123456789' });
+  const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+
+  if (serviceAccountRaw) {
+    const parsed = JSON.parse(serviceAccountRaw);
+    return admin.initializeApp({
+      credential: admin.credential.cert(parsed),
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    });
+  }
+
+  return admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  });
+}
+
+const firebaseAdmin = getFirebaseAdminApp();
+const firestore = admin.firestore(firebaseAdmin);
+const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || '' });
+const appUrl = process.env.APP_URL || 'http://localhost:3000';
+
+function mapPaymentStatus(status?: string) {
+  if (status === 'approved') return 'paid';
+  if (status === 'rejected' || status === 'cancelled') return 'refused';
+  return 'pending';
+}
+
+function verifyMercadoPagoSignature(options: {
+  rawBody: string;
+  signature?: string;
+  requestId?: string;
+  dataId?: string;
+  webhookSecret?: string;
+}) {
+  const { signature, requestId, dataId, webhookSecret } = options;
+  if (!webhookSecret) return true;
+  if (!signature || !requestId || !dataId) return false;
+
+  const parts = Object.fromEntries(
+    signature.split(',').map((chunk) => {
+      const [key, value] = chunk.split('=');
+      return [key?.trim(), value?.trim()];
+    }),
+  );
+
+  const ts = parts.ts;
+  const v1 = parts.v1;
+
+  if (!ts || !v1) return false;
+
+  const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+  const generated = crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex');
+  return generated === v1;
+}
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const port = Number(process.env.PORT || 3000);
 
   app.use(cors());
-  app.use(express.json());
+  app.use(
+    express.json({
+      verify: (req, _res, buffer) => {
+        (req as express.Request & { rawBody?: string }).rawBody = buffer.toString();
+      },
+    }),
+  );
 
-  // API routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+  app.get('/api/health', (_req, res) => {
+    res.json({ ok: true, now: new Date().toISOString() });
   });
 
-  // Create Checkout Preference
-  app.post("/api/checkout", async (req, res) => {
+  app.post('/api/checkout', async (req, res) => {
     try {
-      const { productId, userId, buyerName, buyerEmail } = req.body;
+      const { productId, buyerName, buyerEmail } = req.body as {
+        productId?: string;
+        buyerName?: string;
+        buyerEmail?: string;
+      };
 
-      if (!productId || !userId) {
-        return res.status(400).json({ error: "Missing productId or userId" });
+      if (!productId) {
+        res.status(400).json({ error: 'productId é obrigatório.' });
+        return;
       }
 
-      // Fetch product from Firestore
-      const productRef = doc(db, 'products', productId);
-      const productSnap = await getDoc(productRef);
-
-      if (!productSnap.exists()) {
-        return res.status(404).json({ error: "Product not found" });
+      if (!process.env.MP_ACCESS_TOKEN) {
+        res.status(500).json({ error: 'Mercado Pago não configurado.' });
+        return;
       }
 
-      const product = productSnap.data();
+      const productRef = firestore.collection('products').doc(productId);
+      const productSnap = await productRef.get();
+
+      if (!productSnap.exists) {
+        res.status(404).json({ error: 'Produto não encontrado.' });
+        return;
+      }
+
+      const product = productSnap.data() as Record<string, any>;
 
       if (!product.isActive) {
-        return res.status(400).json({ error: "Product is not active" });
+        res.status(400).json({ error: 'Produto inativo.' });
+        return;
       }
 
-      // Create a purchase record in pending state
-      const purchasesRef = collection(db, 'purchases');
-      const purchaseDoc = await addDoc(purchasesRef, {
-        id: '', // Will update with doc.id
+      const purchaseRef = firestore.collection('purchases').doc();
+      const purchasePayload = {
+        id: purchaseRef.id,
         creatorId: product.userId,
-        productId: productId,
-        buyerName: buyerName || 'Anônimo',
-        buyerEmail: buyerEmail || 'anonimo@email.com',
-        amount: product.price,
+        productId,
+        buyerName: buyerName || 'Cliente Linko',
+        buyerEmail: buyerEmail || '',
+        amount: Number(product.price || 0),
         status: 'pending',
         productDetails: {
           name: product.name,
           description: product.description || '',
           imageUrl: product.imageUrl || '',
           fileUrl: product.fileUrl || '',
-          type: product.type || 'simple'
+          type: product.type || 'simple',
         },
-        createdAt: new Date()
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      await purchaseRef.set(purchasePayload);
+
+      await firestore.collection('transactions').doc(purchaseRef.id).set({
+        id: purchaseRef.id,
+        purchaseId: purchaseRef.id,
+        creatorId: product.userId,
+        productId,
+        gateway: 'mercadopago',
+        status: 'pending',
+        amount: Number(product.price || 0),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      await updateDoc(purchaseDoc, { id: purchaseDoc.id });
-
-      // Create Mercado Pago Preference
-      const preference = new Preference(client);
+      const preference = new Preference(mpClient);
       const result = await preference.create({
         body: {
+          external_reference: purchaseRef.id,
+          notification_url: `${appUrl}/api/webhooks/mercadopago`,
+          back_urls: {
+            success: `${appUrl}/dashboard/purchases/success`,
+            pending: `${appUrl}/dashboard/purchases/pending`,
+            failure: `${appUrl}/dashboard/purchases/failure`,
+          },
+          auto_return: 'approved',
+          payer: {
+            name: buyerName || 'Cliente Linko',
+            email: buyerEmail || undefined,
+          },
           items: [
             {
               id: productId,
               title: product.name,
               quantity: 1,
-              unit_price: product.price,
               currency_id: 'BRL',
-              description: product.description || 'Produto Linko'
-            }
+              unit_price: Number(product.price || 0),
+              description: product.description || 'Produto Linko',
+            },
           ],
-          external_reference: purchaseDoc.id,
-          back_urls: {
-            success: `${process.env.APP_URL || `http://localhost:${PORT}`}/dashboard/purchases/success`,
-            failure: `${process.env.APP_URL || `http://localhost:${PORT}`}/dashboard/purchases/failure`,
-            pending: `${process.env.APP_URL || `http://localhost:${PORT}`}/dashboard/purchases/pending`
+          metadata: {
+            purchaseId: purchaseRef.id,
+            creatorId: product.userId,
+            productId,
           },
-          auto_return: 'approved',
-          notification_url: `${process.env.APP_URL || `https://your-app.com`}/api/webhooks/mercadopago`
-        }
+        },
       });
 
-      res.json({ init_point: result.init_point, id: result.id });
+      res.json({ initPoint: result.init_point, preferenceId: result.id, purchaseId: purchaseRef.id });
     } catch (error) {
-      console.error("Error creating checkout:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error('checkout_error', error);
+      res.status(500).json({ error: 'Erro interno ao criar checkout.' });
     }
   });
 
-  // Webhook for Mercado Pago
-  app.post("/api/webhooks/mercadopago", async (req, res) => {
-    console.log("Webhook received:", req.body);
-    
+  app.post('/api/webhooks/mercadopago', async (req, res) => {
     try {
-      const { type, data } = req.body;
-      
-      if (type === 'payment' && data && data.id) {
-        // Verify the payment with MP API
-        const paymentClient = new Payment(client);
-        const payment = await paymentClient.get({ id: data.id });
-        
-        if (payment.external_reference) {
-          const purchaseRef = doc(db, 'purchases', payment.external_reference);
-          
-          const updateData: any = { 
-            status: payment.status,
-            paymentId: payment.id?.toString(),
-            updatedAt: new Date()
-          };
-          
-          if (payment.payer?.email) {
-            updateData.buyerEmail = payment.payer.email;
-          }
-          
-          await updateDoc(purchaseRef, updateData);
-          console.log(`Purchase ${payment.external_reference} updated to ${payment.status}`);
-        }
+      const signature = req.header('x-signature') || undefined;
+      const requestId = req.header('x-request-id') || undefined;
+      const dataId = String(req.body?.data?.id || req.query['data.id'] || '');
+      const isValid = verifyMercadoPagoSignature({
+        rawBody: (req as express.Request & { rawBody?: string }).rawBody || '',
+        signature,
+        requestId,
+        dataId,
+        webhookSecret: process.env.MP_WEBHOOK_SECRET,
+      });
+
+      if (!isValid) {
+        res.status(401).send('invalid webhook signature');
+        return;
       }
-      
-      res.status(200).send("OK");
+
+      if (req.body?.type !== 'payment' || !dataId) {
+        res.status(200).send('ignored');
+        return;
+      }
+
+      const paymentClient = new Payment(mpClient);
+      const payment = await paymentClient.get({ id: dataId });
+      const purchaseId = payment.external_reference;
+
+      if (!purchaseId) {
+        res.status(200).send('missing reference');
+        return;
+      }
+
+      const purchaseRef = firestore.collection('purchases').doc(purchaseId);
+      const purchaseSnap = await purchaseRef.get();
+      if (!purchaseSnap.exists) {
+        res.status(404).send('purchase not found');
+        return;
+      }
+
+      const purchase = purchaseSnap.data() as Record<string, any>;
+      const normalizedStatus = mapPaymentStatus(payment.status);
+      const buyerEmail = payment.payer?.email || purchase.buyerEmail || '';
+      const productId = purchase.productId;
+
+      await purchaseRef.set(
+        {
+          status: normalizedStatus,
+          paymentId: String(payment.id || dataId),
+          buyerEmail,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      await firestore.collection('transactions').doc(purchaseId).set(
+        {
+          id: purchaseId,
+          purchaseId,
+          creatorId: purchase.creatorId,
+          productId,
+          gateway: 'mercadopago',
+          gatewayPaymentId: String(payment.id || dataId),
+          status: normalizedStatus,
+          amount: Number(payment.transaction_amount || purchase.amount || 0),
+          rawStatus: payment.status,
+          payerEmail: buyerEmail,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      if (normalizedStatus === 'paid') {
+        const accessRef = firestore.collection('access').doc(`${purchaseId}_${productId}`);
+        await accessRef.set(
+          {
+            id: `${purchaseId}_${productId}`,
+            purchaseId,
+            productId,
+            creatorId: purchase.creatorId,
+            buyerEmail,
+            status: 'active',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+
+      res.status(200).send('ok');
     } catch (error) {
-      console.error("Webhook error:", error);
-      res.status(500).send("Error");
+      console.error('mercadopago_webhook_error', error);
+      res.status(500).send('error');
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`server ready on ${appUrl}`);
   });
 }
 
-startServer();
+void startServer();

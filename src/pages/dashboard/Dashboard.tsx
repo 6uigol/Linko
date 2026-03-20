@@ -1,116 +1,127 @@
-import React from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { ShoppingBag, Users, Link as LinkIcon, Settings } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CircleDollarSign, Package, ShoppingCart, UserRound } from 'lucide-react';
 import DashboardLayout from '../../components/DashboardLayout';
+import { useAuth } from '../../contexts/AuthContext';
+import { fetchDashboardMetrics, formatCurrency, formatDate, type PurchaseRecord } from '../../lib/app-data';
 
 export default function Dashboard() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
+  const [metrics, setMetrics] = useState({ totalSales: 0, buyers: 0, products: 0, blocks: 0, transactions: [] as PurchaseRecord[] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      if (!user) return;
+      setLoading(true);
+      try {
+        setMetrics(await fetchDashboardMetrics(user.uid));
+      } finally {
+        setLoading(false);
+      }
+    }
+    void load();
+  }, [user]);
+
+  const cards = [
+    { title: 'Total de vendas', value: formatCurrency(metrics.totalSales), icon: CircleDollarSign },
+    { title: 'Compradores', value: String(metrics.buyers), icon: UserRound },
+    { title: 'Produtos cadastrados', value: String(metrics.products), icon: Package },
+    { title: 'Blocos ativos', value: String(metrics.blocks), icon: ShoppingCart },
+  ];
 
   return (
     <DashboardLayout>
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-text-primary">
-          Olá, {profile?.name}
-        </h1>
-        <a
-          href={`/${profile?.slug}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center px-4 py-2.5 text-sm font-semibold rounded-xl text-white bg-gradient-primary shadow-md hover:opacity-90 transition-all"
-        >
-          Ver minha página
-        </a>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-surface overflow-hidden shadow-lg rounded-2xl border border-border-dark">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <ShoppingBag className="h-6 w-6 text-primary" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-text-secondary truncate">Vendas (Mês)</dt>
-                  <dd className="text-xl font-bold text-text-primary">R$ 0,00</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm text-text-muted">Bem-vindo de volta</p>
+          <h1 className="text-3xl font-bold">Olá, {profile?.name}</h1>
         </div>
-        
-        <div className="bg-surface overflow-hidden shadow-lg rounded-2xl border border-border-dark">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Users className="h-6 w-6 text-primary" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-text-secondary truncate">Compradores</dt>
-                  <dd className="text-xl font-bold text-text-primary">0</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-surface overflow-hidden shadow-lg rounded-2xl border border-border-dark">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <LinkIcon className="h-6 w-6 text-primary" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-text-secondary truncate">Cliques na Página</dt>
-                  <dd className="text-xl font-bold text-text-primary">0</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-surface overflow-hidden shadow-lg rounded-2xl border border-border-dark">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Settings className="h-6 w-6 text-primary" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-text-secondary truncate">Plano Atual</dt>
-                  <dd className="text-xl font-bold text-text-primary uppercase">{profile?.plan}</dd>
-                </dl>
-              </div>
-            </div>
-          </div>
+        <div className="flex flex-wrap gap-3">
+          <Link to="/dashboard/links" className="rounded-xl border border-border-dark px-4 py-3 text-sm font-semibold text-text-secondary hover:bg-surface">
+            Abrir editor
+          </Link>
+          {profile?.slug && (
+            <a href={`/${profile.slug}`} target="_blank" rel="noreferrer" className="rounded-xl bg-gradient-primary px-4 py-3 text-sm font-semibold text-white">
+              Ver página pública
+            </a>
+          )}
         </div>
       </div>
-      
-      {/* Plan Warning */}
-      {profile?.plan === 'free' && (
-        <div className="mt-8 bg-warning/10 border border-warning/20 rounded-2xl p-4">
-          <div className="flex">
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-warning">Aviso de Limites do Plano Free</h3>
-              <div className="mt-2 text-sm text-warning/80">
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Limite de 5 links/blocos no plano Free</li>
-                  <li>Limite de 3 produtos no plano Free</li>
-                </ul>
-                <p className="mt-3 font-medium">
-                  Faça upgrade para adicionar mais de 3 produtos e links ilimitados.
-                  <a href="#" className="underline ml-2 hover:text-warning transition-colors">
-                    Fazer upgrade agora &rarr;
-                  </a>
-                </p>
+
+      <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div key={card.title} className="rounded-3xl border border-border-dark bg-surface p-6 shadow-xl">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-text-secondary">{card.title}</p>
+                <Icon className="h-5 w-5 text-primary" />
               </div>
+              <p className="mt-4 text-3xl font-bold">{loading ? '...' : card.value}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+        <section className="rounded-3xl border border-border-dark bg-surface p-6 shadow-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold">Histórico de transações</h2>
+              <p className="text-sm text-text-secondary">Últimos pagamentos do seu negócio.</p>
             </div>
           </div>
-        </div>
-      )}
+
+          <div className="mt-6 overflow-hidden rounded-2xl border border-border-dark">
+            <table className="min-w-full divide-y divide-border-dark text-sm">
+              <thead className="bg-bg-dark text-left text-text-muted">
+                <tr>
+                  <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3">Valor</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Data</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-dark">
+                {metrics.transactions.length === 0 ? (
+                  <tr>
+                    <td className="px-4 py-6 text-text-muted" colSpan={4}>Nenhuma transação encontrada ainda.</td>
+                  </tr>
+                ) : (
+                  metrics.transactions.map((transaction) => (
+                    <tr key={transaction.id}>
+                      <td className="px-4 py-3">{transaction.buyerName || transaction.buyerEmail}</td>
+                      <td className="px-4 py-3">{formatCurrency(transaction.amount)}</td>
+                      <td className="px-4 py-3 capitalize">{transaction.status}</td>
+                      <td className="px-4 py-3">{formatDate(transaction.createdAt)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="space-y-6">
+          <div className="rounded-3xl border border-border-dark bg-surface p-6 shadow-xl">
+            <h2 className="text-xl font-bold">Status do plano</h2>
+            <p className="mt-2 text-sm text-text-secondary">Plano atual: <span className="font-semibold uppercase text-primary">{profile?.plan}</span></p>
+            <ul className="mt-4 space-y-2 text-sm text-text-secondary">
+              <li>• Free: até 5 blocos e 3 produtos.</li>
+              <li>• Pro: blocos e produtos ilimitados.</li>
+            </ul>
+          </div>
+
+          <div className="rounded-3xl border border-border-dark bg-surface p-6 shadow-xl">
+            <h2 className="text-xl font-bold">Lista de compradores</h2>
+            <p className="mt-2 text-sm text-text-secondary">Você já converteu {metrics.buyers} comprador(es) únicos.</p>
+            <Link to="/dashboard/purchases" className="mt-5 inline-block rounded-xl border border-border-dark px-4 py-3 text-sm font-semibold text-text-secondary hover:bg-bg-dark">
+              Ver acessos liberados
+            </Link>
+          </div>
+        </section>
+      </div>
     </DashboardLayout>
   );
 }

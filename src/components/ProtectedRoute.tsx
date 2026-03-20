@@ -8,8 +8,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      <div className="flex min-h-screen items-center justify-center bg-bg-dark">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
       </div>
     );
   }
@@ -18,16 +18,14 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (profile) {
-    const isOnboarding = location.pathname === '/onboarding';
-    
-    if (!profile.onboardingCompleted && !isOnboarding) {
-      return <Navigate to="/onboarding" replace />;
-    }
-    
-    if (profile.onboardingCompleted && isOnboarding) {
-      return <Navigate to="/dashboard" replace />;
-    }
+  const isOnboarding = location.pathname === '/onboarding';
+
+  if (profile && !profile.onboardingCompleted && !isOnboarding) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  if (profile?.onboardingCompleted && isOnboarding) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

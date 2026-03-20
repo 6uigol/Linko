@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
-import { useAuth } from '../../contexts/AuthContext';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { ArrowLeft } from 'lucide-react';
+import { auth } from '../../lib/firebase';
+import { createInitialProfile } from '../../lib/app-data';
 
 export default function Register() {
   const [name, setName] = useState('');
@@ -13,152 +12,79 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { refreshProfile } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
-    
+
     if (password !== confirmPassword) {
       setError('As senhas não coincidem.');
       return;
     }
-    
+
+    if (password.length < 6) {
+      setError('Use ao menos 6 caracteres na senha.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
-        email: user.email,
-        name,
-        plan: 'free',
-        onboardingCompleted: false,
-        createdAt: new Date().toISOString(),
-      });
-
-      await refreshProfile();
+      const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await updateProfile(user, { displayName: name.trim() });
+      await createInitialProfile(user.uid, { email: user.email ?? email.trim(), name: name.trim() });
       navigate('/onboarding');
-    } catch (err: any) {
-      setError(err.message || 'Falha ao criar conta. Tente novamente.');
+    } catch (err) {
       console.error(err);
+      setError('Não foi possível criar sua conta agora. Verifique os dados e tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-1 flex-col justify-center px-6 py-12 lg:px-8 bg-bg-dark">
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <Link to="/" className="inline-flex items-center text-sm font-medium text-text-secondary hover:text-text-primary transition-colors mb-2">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Voltar para a Home
+    <div className="flex min-h-screen items-center justify-center bg-bg-dark px-6 py-12">
+      <div className="w-full max-w-md rounded-3xl border border-border-dark bg-surface p-8 shadow-2xl">
+        <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary">
+          <ArrowLeft className="h-4 w-4" />
+          Voltar para a home
         </Link>
-        <h2 className="mt-6 text-center text-3xl font-bold leading-9 tracking-tight text-text-primary">
-          Crie sua conta
-        </h2>
-      </div>
+        <h1 className="text-3xl font-bold">Criar conta</h1>
+        <p className="mt-2 text-sm text-text-secondary">Cadastre seu nome, email e senha. Sem pedir URL no cadastro.</p>
 
-      <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
-        <div className="bg-surface px-6 py-8 shadow-lg rounded-2xl border border-border-dark">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {error && (
-              <div className="bg-error/10 border border-error/20 text-error p-3 rounded-xl text-sm">
-                {error}
-              </div>
-            )}
+        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+          {error && <div className="rounded-2xl border border-error/20 bg-error/10 p-3 text-sm text-error">{error}</div>}
 
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium leading-6 text-text-secondary">
-                Nome completo
-              </label>
-              <div className="mt-2">
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-all"
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium leading-6 text-text-secondary">
-                Email
-              </label>
-              <div className="mt-2">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-all"
-                />
-              </div>
-            </div>
+          <label className="block text-sm">
+            <span className="mb-2 block text-text-secondary">Nome</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} required className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" />
+          </label>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium leading-6 text-text-secondary">
-                Senha
-              </label>
-              <div className="mt-2">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-all"
-                />
-              </div>
-            </div>
+          <label className="block text-sm">
+            <span className="mb-2 block text-text-secondary">Email</span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" />
+          </label>
 
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium leading-6 text-text-secondary">
-                Confirmar Senha
-              </label>
-              <div className="mt-2">
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="block w-full rounded-xl border-0 py-2.5 px-3 bg-bg-dark text-text-primary shadow-sm ring-1 ring-inset ring-border-dark placeholder:text-text-muted focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 transition-all"
-                />
-              </div>
-            </div>
+          <label className="block text-sm">
+            <span className="mb-2 block text-text-secondary">Senha</span>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" />
+          </label>
 
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex w-full justify-center rounded-xl bg-gradient-primary px-3 py-2.5 text-sm font-semibold leading-6 text-white shadow-md hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 transition-all"
-              >
-                {loading ? 'Criando conta...' : 'Cadastrar'}
-              </button>
-            </div>
-          </form>
-        </div>
+          <label className="block text-sm">
+            <span className="mb-2 block text-text-secondary">Confirmar senha</span>
+            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required className="w-full rounded-xl border border-border-dark bg-bg-dark px-4 py-3 outline-none focus:border-primary" />
+          </label>
 
-        <p className="mt-8 text-center text-sm text-text-muted">
-          Já tem uma conta?{' '}
-          <Link to="/login" className="font-semibold leading-6 text-primary hover:text-primary-hover transition-colors">
-            Fazer login
+          <button disabled={loading} className="w-full rounded-xl bg-gradient-primary px-4 py-3 font-semibold text-white disabled:opacity-60">
+            {loading ? 'Criando conta...' : 'Cadastrar'}
+          </button>
+        </form>
+
+        <p className="mt-6 text-center text-sm text-text-secondary">
+          Já tem conta?{' '}
+          <Link to="/login" className="font-semibold text-primary hover:text-primary-hover">
+            Entrar
           </Link>
         </p>
       </div>
